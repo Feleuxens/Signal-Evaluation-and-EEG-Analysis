@@ -3,6 +3,8 @@ from matplotlib import pyplot as plt
 import mne
 import numpy as np
 import annotations
+from mne.preprocessing import ICA, create_eog_epochs, create_ecg_epochs
+from ica import run_ica_and_interpolate
 
 # --- Constants ---
 tmin, tmax = -0.5, 1.0  # epoch time range in seconds
@@ -64,9 +66,36 @@ def analyze_subject(subject_id, bids_root="../data/"):
     raw.filter(l_freq, h_freq, picks="eeg", fir_design="firwin")
 
     # --- Artefact removal with ASR ---
+    try:
+        raw, ica = run_ica_and_interpolate(
+            raw, n_components=0.99, method="fastica", random_state=42, reject_ecg=True
+        )
+        print("ICA cleaning applied. Excluded components:", getattr(ica, "exclude", []))
+    except Exception as e:
+        print(f"ICA pipeline failed: {e}. Continuing without ICA.")
+
+    # # Fallback: robust ICA-based artefact rejection
+    # ica = ICA(n_components=0.99, method="fastica", random_state=42, max_iter="auto")
+    # ica.fit(raw)
+    # # Find EOG artifacts and exclude
+    # eog_epochs = create_eog_epochs(raw, reject_by_annotation=True)
+    # eog_inds, eog_scores = ica.find_bads_eog(eog_epochs)
+    # ica.exclude.extend(eog_inds)
+    # # Optionally find ECG components
+    # try:
+    #     ecg_epochs = create_ecg_epochs(raw)
+    #     ecg_inds, ecg_scores = ica.find_bads_ecg(ecg_epochs)
+    #     ica.exclude.extend(ecg_inds)
+    # except Exception:
+    #     pass
+    # ica.apply(raw)
+
     # TODO: implement
 
     # --- Interpolate bad channels ---
+
+    # --- Interpolate previously marked bad channels ---
+    # raw.interpolate_bads(reset_bads=False)
     # TODO: doesnt work
     # File "~/.local/share/virtualenvs/eeg-Bt72Ye1s/lib/python3.13/site-packages/mne/bem.py", line 1048, in get_fitting_dig
     # raise ValueError(f"No digitization points found for dig_kinds={dig_kinds}")
@@ -119,11 +148,11 @@ def analyze_subject(subject_id, bids_root="../data/"):
     evoked_regular = epochs_regular.average()
 
     # For type checking reasons
-    if type(evoked_random) is not mne.Evoked:
-        raise ValueError("evoked_random is not an instance of mne.Evoked")
+    if type(evoked_random) is not mne.evoked.EvokedArray:
+        raise ValueError("evoked_random is not an instance of mne.evoked.EvokedArray")
 
-    if type(evoked_regular) is not mne.Evoked:
-        raise ValueError("evoked_regular is not an instance of mne.Evoked")
+    if type(evoked_regular) is not mne.evoked.EvokedArray:
+        raise ValueError("evoked_regular is not an instance of mne.evoked.EvokedArray")
 
     # simple channel-mean time series plot
     times = evoked_random.times
