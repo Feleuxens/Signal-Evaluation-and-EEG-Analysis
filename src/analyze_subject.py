@@ -73,8 +73,8 @@ def analyze_subject(subject_id, bids_root="../data/", use_ica=True, use_asr=Fals
     # ASR first (handles transient artifacts)
     if use_asr:
         try:
-            print(f"Running ASR with cutoff={cutoff}...")
-            asr = asrpy.ASR(sfreq=raw.info["sfreq"], cutoff=cutoff)
+            print(f"Running ASR with cutoff={ASR_CUTOFF}...")
+            asr = asrpy.ASR(sfreq=raw.info["sfreq"], cutoff=ASR_CUTOFF)
             asr.fit(raw)
             raw = asr.transform(raw)
             print("ASR complete.")
