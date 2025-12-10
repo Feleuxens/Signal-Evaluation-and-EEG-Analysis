@@ -5,6 +5,7 @@ import numpy as np
 import annotations
 from mne.preprocessing import ICA, create_eog_epochs, create_ecg_epochs
 from ica import run_ica_and_interpolate
+import asrpy
 
 # --- Constants ---
 tmin, tmax = -0.5, 1.0  # epoch time range in seconds
@@ -12,9 +13,12 @@ baseline = (-0.25, 0.0)  # baseline correction period
 l_freq, h_freq = 0.1, 40.0  # highpass, lowpass filter
 notch_freqs = [50, 100, 150, 200]  # notch filter frequencies
 bad_channel_z_thresh = 3.0  # z-score threshold for bad channel detection
+# --- Artifact correction settings ---
+ASR_CUTOFF = 10  # ASR cutoff (lower = more aggressive, 5-20 typical)
+ICA_N_COMPONENTS = 0.99  # Variance explained or number of components
 
 
-def analyze_subject(subject_id, bids_root="../data/"):
+def analyze_subject(subject_id, bids_root="../data/", use_ica=True, use_asr=False):
 
     bids_path = BIDSPath(
         subject=subject_id,
@@ -65,14 +69,27 @@ def analyze_subject(subject_id, bids_root="../data/"):
     # 2) Bandpass filter
     raw.filter(l_freq, h_freq, picks="eeg", fir_design="firwin")
 
-    # --- Artefact removal with ASR ---
-    try:
-        raw, ica = run_ica_and_interpolate(
-            raw, n_components=0.99, method="fastica", random_state=42, reject_ecg=True
-        )
-        print("ICA cleaning applied. Excluded components:", getattr(ica, "exclude", []))
-    except Exception as e:
-        print(f"ICA pipeline failed: {e}. Continuing without ICA.")
+    # --- Artifact correction ---
+    # ASR first (handles transient artifacts)
+    if use_asr:
+        try:
+            print(f"Running ASR with cutoff={cutoff}...")
+            asr = asrpy.ASR(sfreq=raw.info["sfreq"], cutoff=cutoff)
+            asr.fit(raw)
+            raw = asr.transform(raw)
+            print("ASR complete.")
+        except Exception as e:
+            print(f"ASR failed: {e}. Continuing without ASR.")
+
+    # ICA second (handles stereotyped artifacts like blinks)
+    if use_ica:
+        try:
+            raw, ica = run_ica_and_interpolate(
+                raw, n_components=0.99, method="fastica", random_state=42, reject_ecg=True
+            )
+            print("ICA cleaning applied. Excluded components:", getattr(ica, "exclude", []))
+        except Exception as e:
+            print(f"ICA failed: {e}. Continuing without ICA.")
 
     # # Fallback: robust ICA-based artefact rejection
     # ica = ICA(n_components=0.99, method="fastica", random_state=42, max_iter="auto")
@@ -93,6 +110,15 @@ def analyze_subject(subject_id, bids_root="../data/"):
     # TODO: implement
 
     # --- Interpolate bad channels ---
+    if raw.info["bads"]:
+        try:
+            # Ensure montage is set for interpolation
+            if not raw.info.get("dig"):
+                raw.set_montage("standard_1020", on_missing="ignore")
+            raw.interpolate_bads(reset_bads=False, mode="accurate")
+            print(f"Interpolated bad channels: {raw.info['bads']}")
+        except Exception as e:
+            print(f"Interpolation failed: {e}")
 
     # --- Interpolate previously marked bad channels ---
     # raw.interpolate_bads(reset_bads=False)
@@ -115,7 +141,7 @@ def analyze_subject(subject_id, bids_root="../data/"):
         event_id=event_dict,
         tmin=tmin,
         tmax=tmax,
-        baseline=None,
+        baseline=baseline,
         preload=True,
         reject_by_annotation=True,
     )
@@ -132,18 +158,11 @@ def analyze_subject(subject_id, bids_root="../data/"):
     desc_random = "random"
     desc_regular = "regular"
 
-    id_random = event_dict.get(desc_random)
-    id_regular = event_dict.get(desc_regular)
-    if id_random is None or id_regular is None:
-        raise ValueError(
-            f"Descriptions not found. Available: {list(event_dict.keys())}"
-        )
+    # Select epochs by condition name (string key, not integer ID!)
+    epochs_random = epochs[desc_random]
+    epochs_regular = epochs[desc_regular]
 
-    # select and baseline-correct
-    epochs_random = epochs[id_random].copy().apply_baseline(baseline)
-    epochs_regular = epochs[id_regular].copy().apply_baseline(baseline)
-
-    # average (mean across all occurrences)
+    # Average across trials (mean)
     evoked_random = epochs_random.average()
     evoked_regular = epochs_regular.average()
 
