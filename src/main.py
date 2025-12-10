@@ -4,7 +4,7 @@ from analyze_subject import analyze_subject
 
 # path where to save the datasets.
 bids_root = "../data/"
-subject_id = '001'
+subject_id = "001"
 
 
 get_subjectlist(bids_root)
@@ -14,12 +14,14 @@ analyze_subject(subject_id, bids_root)
 exit()
 
 # INFO: Bellow are old runs
-bids_path = BIDSPath(subject=subject_id,datatype='eeg', suffix='eeg',task='jacobsen',root=bids_root)
+bids_path = BIDSPath(
+    subject=subject_id, datatype="eeg", suffix="eeg", task="jacobsen", root=bids_root
+)
 
 # read the file
 raw = read_raw_bids(bids_path)
 
-print(raw.info['ch_names'])
+print(raw.info["ch_names"])
 
 
 # # Plot overview of first 30 seconds of data
