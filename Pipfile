@@ -12,6 +12,7 @@ numpy = "2.3.4"
 scipy = "1.16"
 pandas = "2.3.3"
 pyqt6 = "*"
+asrpy = "0.0.8"
 
 [dev-packages]
 
