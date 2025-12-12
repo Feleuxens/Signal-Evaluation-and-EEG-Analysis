@@ -6,6 +6,7 @@ import annotations
 from mne.preprocessing import ICA, create_eog_epochs, create_ecg_epochs
 from ica import run_ica_and_interpolate
 import asrpy
+import plots
 
 # --- Constants ---
 tmin, tmax = -0.5, 1.0  # epoch time range in seconds
@@ -31,6 +32,8 @@ def analyze_subject(subject_id, bids_root="../data/", use_ica=True, use_asr=Fals
     # --- Load the data ---
     raw = read_raw_bids(bids_path)
     raw.load_data()
+    raw_unprocessed = raw.copy()  # keep a copy of unprocessed data
+
     data = raw.get_data(picks="eeg")
     channel_names = raw.ch_names
 
@@ -82,12 +85,20 @@ def analyze_subject(subject_id, bids_root="../data/", use_ica=True, use_asr=Fals
             print(f"ASR failed: {e}. Continuing without ASR.")
 
     # ICA second (handles stereotyped artifacts like blinks)
+    ica = None
     if use_ica:
         try:
             raw, ica = run_ica_and_interpolate(
-                raw, n_components=0.99, method="fastica", random_state=42, reject_ecg=True
+                raw,
+                n_components=0.99,
+                method="fastica",
+                random_state=42,
+                reject_ecg=True,
             )
-            print("ICA cleaning applied. Excluded components:", getattr(ica, "exclude", []))
+            print(
+                "ICA cleaning applied. Excluded components:",
+                getattr(ica, "exclude", []),
+            )
         except Exception as e:
             print(f"ICA failed: {e}. Continuing without ICA.")
 
@@ -155,36 +166,37 @@ def analyze_subject(subject_id, bids_root="../data/", use_ica=True, use_asr=Fals
     data = epochs.get_data()
 
     # TODO: Just for testing
-    desc_random = "random"
-    desc_regular = "regular"
 
-    # Select epochs by condition name (string key, not integer ID!)
-    epochs_random = epochs[desc_random]
-    epochs_regular = epochs[desc_regular]
+    ch = next((c for c in ["Fp1", "Fp2", "Fpz", "AFz"] if c in raw.ch_names), "Fp1")
+    sf = raw.info["sfreq"]
+    t_min, duration = 100.0, 10.0
+    start = int(t_min * sf)
+    stop = int((t_min + duration) * sf)
+    un = raw_unprocessed.copy().pick(ch).get_data(start=start, stop=stop).ravel() * 1e6
+    pr = raw.copy().pick(ch).get_data(start=start, stop=stop).ravel() * 1e6
+    times = np.linspace(t_min, t_min + duration, un.size)
 
-    # Average across trials (mean)
-    evoked_random = epochs_random.average()
-    evoked_regular = epochs_regular.average()
-
-    # For type checking reasons
-    if type(evoked_random) is not mne.evoked.EvokedArray:
-        raise ValueError("evoked_random is not an instance of mne.evoked.EvokedArray")
-
-    if type(evoked_regular) is not mne.evoked.EvokedArray:
-        raise ValueError("evoked_regular is not an instance of mne.evoked.EvokedArray")
-
-    # simple channel-mean time series plot
-    times = evoked_random.times
-    mean_random = evoked_random.data.mean(axis=0)
-    mean_regular = evoked_regular.data.mean(axis=0)
-
-    plt.plot(times, mean_random * 1e6, label="Random")  # convert to µV if data in V
-    plt.plot(times, mean_regular * 1e6, label="Regular")
-    plt.axvspan(baseline[0], baseline[1], color="gray", alpha=0.2)
-    plt.xlabel("Time (s)")
-    plt.ylabel("Amplitude (µV)")
+    plt.figure(figsize=(12, 6))
+    plt.subplot(2, 1, 1)
+    plt.plot(times, un, color="k", label="Unprocessed")
+    plt.plot(times, pr, color="r", label="Processed", alpha=0.8)
+    plt.title(f"{ch} — unprocessed (black) vs processed (red)")
     plt.legend()
-    plt.title("Mean across channels — Random vs Regular")
+    plt.subplot(2, 1, 2)
+    plt.plot(times, un - pr, color="m")
+    plt.title("Difference (unprocessed - processed)")
+    plt.xlabel("Time (s)")
+    plt.tight_layout()
     plt.show()
 
-    return
+    # plots.power_spectral_density_plot(raw, epochs, 0, 100)
+    #
+    # plots.ica_topography_plot(ica, raw)
+    #
+    # plots.one_channel_erp_plot(raw, epochs, baseline)
+    #
+    # plots.all_channel_erp_plot(epochs, baseline)
+
+    plots.unprocessed_vs_processed_plot(raw_unprocessed, raw)
+
+    # plots.butterfly_plot(epochs)
