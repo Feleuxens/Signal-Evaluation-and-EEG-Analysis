@@ -1,8 +1,6 @@
-import mne
 import matplotlib.pyplot as plt
-from mne.preprocessing import ICA
-from ica import run_ica_and_interpolate
 from utils import evoke_channels
+import mne
 import numpy as np
 
 
@@ -22,14 +20,6 @@ def ica_topography_plot(ica, raw):
     # drop EXG from raw copy, then fit ICA
     raw_no_exg = raw.copy().drop_channels(
         [c for c in raw.ch_names if c.startswith("EXG")]
-    )
-
-    raw_no_exg, ica = run_ica_and_interpolate(
-        raw_no_exg,
-        n_components=0.99,
-        method="fastica",
-        random_state=42,
-        reject_ecg=True,
     )
 
     ica.fit(raw_no_exg)

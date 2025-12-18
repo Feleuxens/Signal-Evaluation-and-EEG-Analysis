@@ -14,6 +14,4 @@ subjects = get_subjectlist(bids_root)
 
 print(f"Subjects: {subjects}")
 
-sleep(2)
-
 analyze_subject(subject_id, bids_root)
