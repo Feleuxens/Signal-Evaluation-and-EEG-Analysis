@@ -12,6 +12,7 @@ from step06_asr import run_asr
 from step07_ica import run_ica
 from step08_interpolation import interpolate_bad_channels
 from step09_epoching import epoch_data
+from step10_trialrejection import reject_trials
 
 BASELINE = (-0.25, 0.0)  # baseline correction period
 
@@ -70,6 +71,9 @@ def analyze_subject(subject_id, bids_root="../data/"):
 
     data = epochs.get_data()
 
+    print(f"\n\nStep 10: Trial rejection")
+    epochs, reject_log = reject_trials(epochs)
+
     # TODO: Just for testing
 
     # ch = next((c for c in ["Fp1", "Fp2", "Fpz", "AFz"] if c in raw.ch_names), "Fp1")
@@ -94,14 +98,5 @@ def analyze_subject(subject_id, bids_root="../data/"):
     # plt.tight_layout()
     # plt.show()
     #
-    plots.power_spectral_density_plot(raw, epochs, 0, 64)
 
-    plots.ica_topography_plot(ica, raw)
-
-    plots.one_channel_erp_plot(raw, epochs, BASELINE)
-
-    plots.all_channel_erp_plot(epochs, BASELINE)
-
-    plots.unprocessed_vs_processed_plot(raw_unprocessed, raw)
-
-    plots.butterfly_plot(epochs)
+    return epochs, raw, ica

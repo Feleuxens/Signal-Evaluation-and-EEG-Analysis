@@ -17,5 +17,5 @@ def interpolate_bad_channels(raw: RawEDF) -> RawEDF:
         except Exception as e:
             print(f"Interpolation failed: {e}")
 
-        finally:
-            return raw
+        # finally:
+        return raw

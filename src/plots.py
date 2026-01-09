@@ -1,7 +1,27 @@
+from glob import glob
 import matplotlib.pyplot as plt
-from utils import evoke_channels
+from mne import read_epochs
 import mne
 import numpy as np
+
+from utils import evoke_channels
+
+BASELINE = (-0.25, 0.0)  # baseline correction period
+
+
+def generate_plots(epochs, raw, ica):
+    power_spectral_density_plot(raw, epochs, 0, 64)
+
+    if ica is not None:
+        ica_topography_plot(ica, raw)
+
+    one_channel_erp_plot(raw, epochs, BASELINE)
+
+    all_channel_erp_plot(epochs, BASELINE)
+
+    # unprocessed_vs_processed_plot(raw_unprocessed, raw)
+
+    butterfly_plot(epochs)
 
 
 def power_spectral_density_plot(raw, epochs, fmin, fmax):
@@ -65,7 +85,7 @@ def one_channel_erp_plot(raw, epochs, baseline):
     evoked_random, evoked_regular = evoke_channels(epochs)
 
     # choose channel
-    preferred = "Pz"
+    preferred = "PO7"
     if preferred not in raw.ch_names:
         # pick a posterior channel if available
         for ch in ["POz", "Oz", "P3", "P4", "O1", "O2"]:
@@ -234,3 +254,94 @@ def butterfly_plot(epochs):
         time_unit="s",
         titles=f"Butterfly — Random-Regular diff",
     )
+
+
+def average_channel(channel, bids_root="../data/"):
+    """
+    Load all processed epoch files and compute the grand average for channel PO7,
+    separately for random and regular conditions.
+
+    Parameters
+    ----------
+    channel : str
+    bids_root : str
+        Path to the BIDS root directory.
+
+    Returns
+    -------
+    data_random : np.ndarray
+        Grand average waveform for random condition in µV (n_times,).
+    data_regular : np.ndarray
+        Grand average waveform for regular condition in µV (n_times,).
+    times : np.ndarray
+        Time vector in seconds.
+    """
+    processed_dir = f"{bids_root}processed/"
+    epoch_files = sorted(glob(f"{processed_dir}sub-*_epochs.fif"))
+
+    if not epoch_files:
+        print(f"No processed epoch files found in {processed_dir}")
+        return None, None, None
+
+    print(f"Found {len(epoch_files)} processed epoch file(s)")
+
+    evokeds_random = []
+    evokeds_regular = []
+    times = None
+
+    for fpath in epoch_files:
+        subject_id = fpath.split("sub-")[-1].split("_epochs")[0]
+        print(f"  Loading subject {subject_id}...")
+
+        epochs = read_epochs(fpath, preload=True)
+
+        # Check if channel exists
+        if channel not in epochs.ch_names:
+            print(
+                f"    WARNING: {channel} not found in subject {subject_id}, skipping."
+            )
+            continue
+
+        # Create evoked responses for each condition
+        evoked_random, evoked_regular = evoke_channels(epochs)
+
+        # Get channel channel index and extract data
+        channel_idx = evoked_random.ch_names.index(channel)
+
+        evokeds_random.append(evoked_random.get_data()[channel_idx, :])
+        evokeds_regular.append(evoked_regular.get_data()[channel_idx, :])
+        times = evoked_random.times  # Same for all subjects
+
+    if not evokeds_random:
+        print(f"No valid subjects with {channel} channel found.")
+        return None, None, None
+
+    # Stack and compute mean across subjects
+    n_subjects = len(evokeds_random)
+    evokeds_random = np.array(evokeds_random)  # shape: (n_subjects, n_times)
+    evokeds_regular = np.array(evokeds_regular)
+
+    data_random = np.mean(evokeds_random, axis=0) * 1e6  # Convert to µV
+    data_regular = np.mean(evokeds_regular, axis=0) * 1e6
+
+    print(f"\nGrand average computed from {n_subjects} subject(s)")
+    print(f"  Time range: {times[0]:.3f} to {times[-1]:.3f} s")
+    print(f"  Number of time points: {len(times)}")
+
+    # Plot the grand averages for both conditions
+    import matplotlib.pyplot as plt
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(times * 1000, data_random, "b-", linewidth=2, label="Random")
+    plt.plot(times * 1000, data_regular, "r-", linewidth=2, label="Regular")
+    plt.axhline(0, color="k", linestyle="--", linewidth=0.5)
+    plt.axvline(0, color="k", linestyle="--", linewidth=0.5)
+    plt.xlabel("Time (ms)")
+    plt.ylabel("Amplitude (µV)")
+    plt.title(f"Grand Average ERP at {channel} (n={n_subjects} subjects)")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(f"{processed_dir}grand_average_{channel}.png", dpi=150)
+    plt.show()
+
+    return data_random, data_regular, times

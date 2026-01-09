@@ -18,5 +18,5 @@ def run_asr(raw: RawEDF) -> tuple[RawEDF, asrpy.ASR | None]:
     except Exception as e:
         print(f"ASR failed: {e}. Continuing without ASR.")
 
-    finally:
-        return raw, asr
+    # finally:
+    return raw, asr
