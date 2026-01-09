@@ -1,3 +1,5 @@
+from time import time
+
 from mne.io import read_raw_fif
 from mne import read_epochs
 from os import mkdir
@@ -21,8 +23,17 @@ def main(bids_root="../data/"):
         subject = input("Subject ID: ")
         process_one_subject(subject, bids_root)
     elif i.lower() == "2":
+        time_start = time()
+        failed = []
         for subject in subjects:
-            analyze_and_save(subject, bids_root)
+            try:
+                analyze_and_save(subject, bids_root)
+            except Exception as e:
+                failed.append({subject: e})
+        total_time = time() - time_start
+        print(f"\nElapsed time: {total_time} seconds\n")
+        print(f"{len(failed)} subjects failed")
+        print(failed)
     elif i.lower() == "3":
         average_channel("PO7")
         average_channel("PO8")
