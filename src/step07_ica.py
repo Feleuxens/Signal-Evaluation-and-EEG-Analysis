@@ -8,19 +8,19 @@ from mne.io.edf.edf import RawEDF
 ICA_N_COMPONENTS = 0.99  # Variance explained or number of components
 
 
-def run_ica(raw: RawEDF) -> tuple[RawEDF, ICA | None]:
+def _run_ica(raw: RawEDF) -> tuple[RawEDF, ICA | None]:
 
     # TODO: https://mne.tools/mne-icalabel/stable/generated/examples/00_iclabel.html
 
     return raw, None
 
 
-def _run_ica(raw: RawEDF, n_components: ICA_N_COMPONENTS) -> tuple[RawEDF, ICA | None]:
+def run_ica(raw: RawEDF, n_components=ICA_N_COMPONENTS) -> tuple[RawEDF, ICA | None, int]:
     # require at least two EEG channels
     picks_eeg = pick_types(raw.info, eeg=True, meg=False, exclude="bads")
     if len(picks_eeg) < 2:
         print("Not enough EEG channels for ICA.")
-        return raw, None
+        return raw, None, 0
 
     ica = ICA(
         n_components=n_components,
@@ -61,7 +61,7 @@ def _run_ica(raw: RawEDF, n_components: ICA_N_COMPONENTS) -> tuple[RawEDF, ICA |
                 eog_inds = []
 
     ecg_inds = []
-    if reject_ecg:
+    if True:
         try:
             ecg_epochs = create_ecg_epochs(raw, reject_by_annotation=True, preload=True)
             ecg_inds, ecg_scores = ica.find_bads_ecg(ecg_epochs)
@@ -73,12 +73,13 @@ def _run_ica(raw: RawEDF, n_components: ICA_N_COMPONENTS) -> tuple[RawEDF, ICA |
         ica.exclude = to_remove
         ica.apply(raw)  # applies ICA to raw in-place
 
+    number_excluded_components = len(getattr(ica, "exclude", []))
     print(
         "ICA cleaning applied. Excluded components:",
         getattr(ica, "exclude", []),
     )
 
-    return raw, ica
+    return raw, ica, number_excluded_components
 
 
 # def _ensure_eog_channels(raw):

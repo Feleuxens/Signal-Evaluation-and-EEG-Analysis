@@ -54,7 +54,7 @@ def analyze_subject(subject_id, bids_root="../data/"):
 
     # 07) ICA cleaning
     print(f"\n\nStep 07: ICA cleaning")
-    raw, ica = run_ica(raw)
+    raw, ica, number_excluded_components = run_ica(raw)
 
     # 08) Interpolate bad channels
     print(f"\n\nStep 08: Interpolating bad channels")
@@ -99,4 +99,7 @@ def analyze_subject(subject_id, bids_root="../data/"):
     # plt.show()
     #
 
-    return epochs, raw, ica
+    pipeline_stats = reject_log
+    pipeline_stats["ica_components_excluded"] = number_excluded_components
+
+    return epochs, raw, ica, pipeline_stats

@@ -57,9 +57,15 @@ def reject_trials(
     if "eog" in ch_types:
         reject["eog"] = eog_threshold
 
+
+    epochs_random = epochs["random"]
+    epochs_regular = epochs["regular"]
+
     # Apply rejection criteria
     epochs_clean = epochs.copy()
     epochs_clean.drop_bad(reject=reject, flat=flat)
+    epochs_random_clean = epochs_clean["random"]
+    epochs_regular_clean = epochs_clean["regular"]
 
     n_epochs_after = len(epochs_clean)
     n_rejected = n_epochs_before - n_epochs_after
@@ -68,7 +74,11 @@ def reject_trials(
     reject_log = {
         "n_epochs_before": n_epochs_before,
         "n_epochs_after": n_epochs_after,
+        "n_epochs_regular_before": len(epochs_regular),
+        "n_epochs_random_before": len(epochs_random),
         "n_rejected": n_rejected,
+        "n_rejected_random": len(epochs_random) - len(epochs_random_clean),
+        "n_rejected_regular": len(epochs_regular) - len(epochs_regular_clean),
         "rejection_rate": rejection_rate,
         "reject_criteria": reject,
         "flat_criteria": flat,

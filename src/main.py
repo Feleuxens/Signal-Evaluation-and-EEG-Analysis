@@ -1,14 +1,13 @@
 from time import time
 
-import numpy as np
+import json
 from mne.io import read_raw_fif
 from mne import read_epochs
 from os import mkdir
 from os.path import isdir, isfile
 
 from plots import generate_plots, plot_channel, plot_topomap
-from utils import pairwise_average
-from utils import get_subjectlist, average_channel
+from utils import get_subjectlist, average_channel, pairwise_average, pipeline_statistics
 from analyze_subject import analyze_subject
 
 
@@ -20,7 +19,7 @@ def main(bids_root="../data/"):
     subjects = get_subjectlist(bids_root)
     print(f"Subjects: {subjects}")
 
-    i = input("One subject (1) or all (2) or calculate mean of all PO7/PO8 (3) or Topomap (4): ")
+    i = input("One subject (1) or all (2) or calculate mean of all PO7/PO8 (3) or Topomap (4) or Pipeline Statistics (5): ")
     if i.lower() == "1":
         subject = input("Subject ID: ")
         process_one_subject(subject, bids_root)
@@ -47,6 +46,8 @@ def main(bids_root="../data/"):
     elif i.lower() == "4":
         data_random_po7, data_regular_po7, times_po7, n_subjects, evoked_diff_po7 = average_channel("PO7")
         plot_topomap(evoked_diff_po7)
+    elif i.lower() == "5":
+        pipeline_statistics()
 
 
 
@@ -77,10 +78,15 @@ def process_one_subject(subject_id, bids_root):
 def analyze_and_save(subject_id, bids_root):
     print("Running new processing pipeline for subject " + subject_id)
 
-    epochs, raw, ica = analyze_subject(subject_id, bids_root)
+    epochs, raw, ica, pipeline_stats = analyze_subject(subject_id, bids_root)
 
     epochs.save(f"{bids_root}processed/sub-{subject_id}_epochs.fif", overwrite=True)
     raw.save(f"{bids_root}processed/sub-{subject_id}_raw.fif", overwrite=True)
+    if ica is not None:
+        ica.save(f"{bids_root}processed/sub-{subject_id}_ica.fif", overwrite=True)
+
+    with open(f"{bids_root}processed/sub-{subject_id}_meta.txt", "w") as f:
+        f.write(json.dumps(pipeline_stats))
     return epochs, raw, ica
 
 

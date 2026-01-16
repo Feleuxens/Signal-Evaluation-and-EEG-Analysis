@@ -1,4 +1,6 @@
+import json
 from glob import glob
+from math import inf
 
 import mne
 import mne_bids
@@ -117,3 +119,57 @@ def pairwise_average(arr1, arr2):
     for i in range(0, len(arr1)):
         result.append((arr1[i] + arr2[i])/2)
     return result
+
+
+def pipeline_statistics(bids_root="../data/"):
+    processed_dir = f"{bids_root}processed/"
+    meta_files = sorted(glob(f"{processed_dir}sub-*_meta.txt"))
+
+    if not meta_files:
+        print(f"No meta files found in {processed_dir}")
+
+    raw_data = []
+    for file in meta_files:
+        with open(file, "r") as f:
+            raw_data.append(json.loads(f.read()))
+
+    trial_rejection_regular_min = inf
+    trial_rejection_regular_max = -1
+    trial_rejection_regular_sum = 0
+    trial_rejection_random_min = inf
+    trial_rejection_random_max = -1
+    trial_rejection_random_sum = 0
+    trial_rejection_overall_min = inf
+    trial_rejection_overall_max = -1
+    trial_rejection_overall_sum = 0
+    number_of_trials = 0
+    number_of_trials_regular = 0
+    number_of_trials_random = 0
+    ica_removed_components_min = inf
+    ica_removed_components_max = -1
+    ica_removed_components_sum = 0
+    participants = len(raw_data)
+
+    for data in raw_data:
+        trial_rejection_regular_min = min(trial_rejection_regular_min, data["n_rejected_regular"])
+        trial_rejection_regular_max = max(trial_rejection_regular_max, data["n_rejected_regular"])
+        trial_rejection_regular_sum += data["n_rejected_regular"]
+        trial_rejection_random_min = min(trial_rejection_random_min, data["n_rejected_random"])
+        trial_rejection_random_max = max(trial_rejection_random_max, data["n_rejected_random"])
+        trial_rejection_random_sum += data["n_rejected_random"]
+        trial_rejection_overall_min = min(trial_rejection_overall_min, data["n_rejected"])
+        trial_rejection_overall_max = max(trial_rejection_overall_max, data["n_rejected"])
+        trial_rejection_overall_sum += data["n_rejected"]
+        number_of_trials += data["n_epochs_before"]
+        number_of_trials_regular += data["n_epochs_regular_before"]
+        number_of_trials_random += data["n_epochs_random_before"]
+        ica_removed_components_min = min(ica_removed_components_min, data["ica_components_excluded"])
+        ica_removed_components_max = max(ica_removed_components_max, data["ica_components_excluded"])
+        ica_removed_components_sum += data["ica_components_excluded"]
+
+
+    print(f"Number of trials: {number_of_trials}  |  Random: {number_of_trials_random}, Regular: {number_of_trials_regular}")
+    print(f"Number of trials removed: {trial_rejection_overall_sum} -> {round((trial_rejection_overall_sum/number_of_trials)*100, 2)} %  | Min: {trial_rejection_overall_min}, Max: {trial_rejection_overall_max}")
+    print(f"Number of random trials removed: {trial_rejection_random_sum} -> {round((trial_rejection_random_sum/number_of_trials)*100, 2)} %  | Min: {trial_rejection_random_min}, Max: {trial_rejection_random_max}")
+    print(f"Number of regular trials removed: {trial_rejection_regular_sum} -> {round((trial_rejection_regular_sum/number_of_trials)*100, 2)} %  | Min: {trial_rejection_regular_min}, Max: {trial_rejection_regular_max}")
+    print(f"Ica components removed: Overall {ica_removed_components_sum}, average per participant {round(ica_removed_components_sum/participants, 2)}, min {ica_removed_components_min}, max {ica_removed_components_max}")
