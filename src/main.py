@@ -1,12 +1,14 @@
 from time import time
 
+import numpy as np
 from mne.io import read_raw_fif
 from mne import read_epochs
 from os import mkdir
 from os.path import isdir, isfile
 
-from plots import generate_plots, average_channel
-from utils import get_subjectlist
+from plots import generate_plots, plot_channel, plot_topomap
+from utils import pairwise_average
+from utils import get_subjectlist, average_channel
 from analyze_subject import analyze_subject
 
 
@@ -18,7 +20,7 @@ def main(bids_root="../data/"):
     subjects = get_subjectlist(bids_root)
     print(f"Subjects: {subjects}")
 
-    i = input("One subject (1) or all (2) or calculate mean of all PO7/PO8 (3): ")
+    i = input("One subject (1) or all (2) or calculate mean of all PO7/PO8 (3) or Topomap (4): ")
     if i.lower() == "1":
         subject = input("Subject ID: ")
         process_one_subject(subject, bids_root)
@@ -35,8 +37,17 @@ def main(bids_root="../data/"):
         print(f"{len(failed)} subjects failed")
         print(failed)
     elif i.lower() == "3":
-        average_channel("PO7")
-        average_channel("PO8")
+        data_random_po7, data_regular_po7, times_po7, n_subjects, evoked_diff_po7 = average_channel("PO7")
+        plot_channel("PO7", data_random_po7, data_regular_po7, times_po7, n_subjects)
+        data_random_po8, data_regular_po8, times_po8, n_subjects, evoked_diff_po8 = average_channel("PO8")
+        plot_channel("PO8", data_random_po8, data_regular_po8, times_po8, n_subjects)
+        data_random_both = pairwise_average(data_random_po7, data_random_po8)
+        data_regular_both = pairwise_average(data_regular_po7, data_regular_po8)
+        plot_channel("PO7+PO8", data_random_both, data_regular_both, times_po7, n_subjects)
+    elif i.lower() == "4":
+        data_random_po7, data_regular_po7, times_po7, n_subjects, evoked_diff_po7 = average_channel("PO7")
+        plot_topomap(evoked_diff_po7)
+
 
 
 def process_one_subject(subject_id, bids_root):
@@ -55,7 +66,11 @@ def process_one_subject(subject_id, bids_root):
                 f"{bids_root}processed/sub-{subject_id}_raw.fif", preload=True
             )
         else:
+            print("Running pipeline for subject " + subject_id)
             epochs, raw, ica = analyze_and_save(subject_id, bids_root)
+    else:
+        print("Running pipeline for subject " + subject_id)
+        epochs, raw, ica = analyze_and_save(subject_id, bids_root)
     generate_plots(epochs, raw, ica)
 
 

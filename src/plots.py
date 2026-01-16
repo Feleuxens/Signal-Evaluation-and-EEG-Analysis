@@ -1,6 +1,6 @@
 from glob import glob
 import matplotlib.pyplot as plt
-from mne import read_epochs
+from mne import read_epochs, Evoked
 import mne
 import numpy as np
 
@@ -256,86 +256,15 @@ def butterfly_plot(epochs):
     )
 
 
-def average_channel(channel, bids_root="../data/"):
-    """
-    Load all processed epoch files and compute the grand average for channel PO7,
-    separately for random and regular conditions.
-
-    Parameters
-    ----------
-    channel : str
-    bids_root : str
-        Path to the BIDS root directory.
-
-    Returns
-    -------
-    data_random : np.ndarray
-        Grand average waveform for random condition in µV (n_times,).
-    data_regular : np.ndarray
-        Grand average waveform for regular condition in µV (n_times,).
-    times : np.ndarray
-        Time vector in seconds.
-    """
+def plot_channel(channel, data_random, data_regular, times, n_subjects, bids_root="../data/"):
     processed_dir = f"{bids_root}processed/"
-    epoch_files = sorted(glob(f"{processed_dir}sub-*_epochs.fif"))
-
-    if not epoch_files:
-        print(f"No processed epoch files found in {processed_dir}")
-        return None, None, None
-
-    print(f"Found {len(epoch_files)} processed epoch file(s)")
-
-    evokeds_random = []
-    evokeds_regular = []
-    times = None
-
-    for fpath in epoch_files:
-        subject_id = fpath.split("sub-")[-1].split("_epochs")[0]
-        print(f"  Loading subject {subject_id}...")
-
-        epochs = read_epochs(fpath, preload=True)
-
-        # Check if channel exists
-        if channel not in epochs.ch_names:
-            print(
-                f"    WARNING: {channel} not found in subject {subject_id}, skipping."
-            )
-            continue
-
-        # Create evoked responses for each condition
-        evoked_random, evoked_regular = evoke_channels(epochs)
-
-        # Get channel channel index and extract data
-        channel_idx = evoked_random.ch_names.index(channel)
-
-        evokeds_random.append(evoked_random.get_data()[channel_idx, :])
-        evokeds_regular.append(evoked_regular.get_data()[channel_idx, :])
-        times = evoked_random.times  # Same for all subjects
-
-    if not evokeds_random:
-        print(f"No valid subjects with {channel} channel found.")
-        return None, None, None
-
-    # Stack and compute mean across subjects
-    n_subjects = len(evokeds_random)
-    evokeds_random = np.array(evokeds_random)  # shape: (n_subjects, n_times)
-    evokeds_regular = np.array(evokeds_regular)
-
-    data_random = np.mean(evokeds_random, axis=0) * 1e6  # Convert to µV
-    data_regular = np.mean(evokeds_regular, axis=0) * 1e6
-
-    print(f"\nGrand average computed from {n_subjects} subject(s)")
-    print(f"  Time range: {times[0]:.3f} to {times[-1]:.3f} s")
-    print(f"  Number of time points: {len(times)}")
-
-    # Plot the grand averages for both conditions
-    import matplotlib.pyplot as plt
 
     plt.figure(figsize=(10, 5))
-    plt.plot(times * 1000, data_random, "b-", linewidth=2, label="Random")
-    plt.plot(times * 1000, data_regular, "r-", linewidth=2, label="Regular")
+    plt.plot(times * 1000, data_random, "r-", linewidth=2, label="Random")
+    plt.plot(times * 1000, data_regular, "b-", linewidth=2, label="Regular")
     plt.axhline(0, color="k", linestyle="--", linewidth=0.5)
     plt.axvline(0, color="k", linestyle="--", linewidth=0.5)
+    plt.yticks([-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7])
     plt.xlabel("Time (ms)")
     plt.ylabel("Amplitude (µV)")
     plt.title(f"Grand Average ERP at {channel} (n={n_subjects} subjects)")
@@ -345,3 +274,32 @@ def average_channel(channel, bids_root="../data/"):
     plt.show()
 
     return data_random, data_regular, times
+
+
+def plot_topomap(evoked_diff: Evoked):
+    evoked_diff = evoked_diff.copy().drop_channels(
+        [c for c in evoked_diff.ch_names if c.startswith("EXG")]
+    )
+
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4), constrained_layout=True)
+
+    time_windows = {
+        "100–130 ms": (0.100, 0.130),
+        "170–200 ms": (0.170, 0.200),
+        "300–1000 ms": (0.300, 1.000),
+    }
+
+    for ax, (title, (tmin, tmax)) in zip(axes, time_windows.items()):
+        evoked_diff.plot_topomap(
+            times=[(tmin + tmax) / 2],
+            average=tmax - tmin,
+            axes=ax,
+            show=False,
+            colorbar=False,
+            vlim=(3, -3),
+            cmap="RdYlBu_r",
+        )
+        ax.set_title(title)
+
+    fig.colorbar(axes[-1].images[0], ax=axes, shrink=0.6, label="µV")
+    plt.show()
