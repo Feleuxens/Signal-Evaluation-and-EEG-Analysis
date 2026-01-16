@@ -19,3 +19,4 @@ def interpolate_bad_channels(raw: RawEDF) -> RawEDF:
 
         # finally:
         return raw
+    return raw
