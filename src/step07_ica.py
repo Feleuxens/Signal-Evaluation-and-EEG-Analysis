@@ -26,9 +26,7 @@ def run_ica(raw: RawEDF, n_components=ICA_N_COMPONENTS) -> tuple[RawEDF, ICA | N
     # find EOG components using any channels already marked as 'eog' or named EXG*
     ch_types = raw.get_channel_types()
     eog_chs = [ch for ch, t in zip(raw.ch_names, ch_types) if t == "eog"]
-    if not eog_chs:
-        # fall back to EXG labels if they exist (do not change channel types or interpolate)
-        eog_chs = [ch for ch in raw.ch_names if ch.upper().startswith("EXG")]
+    exg_chs = [ch for ch in raw.ch_names if ch.upper().startswith("EXG")]
 
     eog_inds = []
     if eog_chs:
@@ -39,27 +37,14 @@ def run_ica(raw: RawEDF, n_components=ICA_N_COMPONENTS) -> tuple[RawEDF, ICA | N
             )
             eog_inds, scores = ica.find_bads_eog(eog_epochs)
         except Exception:
-            # fallback correlation method
-            try:
-                sources = ica.get_sources(raw).get_data()
-                eog_data = raw.get_data(picks=[eog_chs[0]]).ravel()
-                scores = np.array(
-                    [
-                        np.corrcoef(sources[i], eog_data)[0, 1]
-                        for i in range(sources.shape[0])
-                    ]
-                )
-                eog_inds = list(np.where(np.abs(scores) > 0.3)[0])
-            except Exception:
-                eog_inds = []
+            eog_inds = []
 
     ecg_inds = []
-    if True:
-        try:
-            ecg_epochs = create_ecg_epochs(raw, reject_by_annotation=True, preload=True)
-            ecg_inds, ecg_scores = ica.find_bads_ecg(ecg_epochs)
-        except Exception:
-            ecg_inds = []
+    try:
+        ecg_epochs = create_ecg_epochs(raw, reject_by_annotation=True, preload=True)
+        ecg_inds, ecg_scores = ica.find_bads_ecg(ecg_epochs)
+    except Exception:
+        ecg_inds = []
 
     to_remove = sorted(set(eog_inds + ecg_inds))
     if to_remove:
