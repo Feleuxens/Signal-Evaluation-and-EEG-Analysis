@@ -64,40 +64,8 @@ def analyze_subject(subject_id, bids_root="../data/"):
     print(f"\n\nStep 09: Epoching")
     epochs, events, event_dict = epoch_data(raw, bids_path, baseline=BASELINE)
 
-    # TODO: Update further analysis steps...
-
-    # --- Display results ---
-    print(f"Subject {subject_id} analysis complete. Number of epochs: {len(epochs)}")
-
-    data = epochs.get_data()
-
     print(f"\n\nStep 10: Trial rejection")
     epochs, reject_log = reject_trials(epochs)
-
-    # TODO: Just for testing
-
-    # ch = next((c for c in ["Fp1", "Fp2", "Fpz", "AFz"] if c in raw.ch_names), "Fp1")
-    # sf = raw.info["sfreq"]
-    # t_min, duration = 100.0, 10.0
-    # start = int(t_min * sf)
-    # stop = int((t_min + duration) * sf)
-    # un = raw_unprocessed.copy().pick(ch).get_data(start=start, stop=stop).ravel() * 1e6
-    # pr = raw.copy().pick(ch).get_data(start=start, stop=stop).ravel() * 1e6
-    # times = np.linspace(t_min, t_min + duration, un.size)
-    #
-    # plt.figure(figsize=(12, 6))
-    # plt.subplot(2, 1, 1)
-    # plt.plot(times, un, color="k", label="Unprocessed")
-    # plt.plot(times, pr, color="r", label="Processed", alpha=0.8)
-    # plt.title(f"{ch} — unprocessed (black) vs processed (red)")
-    # plt.legend()
-    # plt.subplot(2, 1, 2)
-    # plt.plot(times, un - pr, color="m")
-    # plt.title("Difference (unprocessed - processed)")
-    # plt.xlabel("Time (s)")
-    # plt.tight_layout()
-    # plt.show()
-    #
 
     pipeline_stats = reject_log
     pipeline_stats["ica_components_excluded"] = number_excluded_components
