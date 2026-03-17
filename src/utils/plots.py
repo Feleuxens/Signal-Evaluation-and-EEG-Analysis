@@ -1,30 +1,12 @@
-from glob import glob
 import matplotlib.pyplot as plt
-from mne import read_epochs, Evoked
+from mne import Evoked
 import mne
 import numpy as np
 
-from utils import evoke_channels
-
-BASELINE = (-0.25, 0.0)  # baseline correction period
+from utils.utils import evoke_channels
 
 
-def generate_plots(epochs, raw, ica):
-    power_spectral_density_plot(raw, epochs, 0, 64)
-
-    if ica is not None:
-        ica_topography_plot(ica, raw)
-
-    one_channel_erp_plot(raw, epochs, BASELINE)
-
-    all_channel_erp_plot(epochs, BASELINE)
-
-    # unprocessed_vs_processed_plot(raw_unprocessed, raw)
-
-    butterfly_plot(epochs)
-
-
-def power_spectral_density_plot(raw, epochs, fmin, fmax):
+def power_spectral_density_plot(raw, fmin, fmax):
     # Sensor-level PSD (Welch) — full-band and zoomed alpha/beta
     fig_psd = raw.compute_psd(method="welch", fmin=fmin, fmax=fmax, n_fft=2048).plot(
         average=True, picks="eeg", show=False
@@ -46,39 +28,6 @@ def ica_topography_plot(ica, raw):
 
     comp_picks = list(range(min(20, ica.n_components_)))
     ica.plot_components(picks=comp_picks, inst=raw_no_exg)
-    # ica.plot_properties(raw_no_exg, picks=comp_picks)
-
-    # # 1) ensure comp picks are component indices (0..n_components-1)
-    # n_comp = ica.n_components_
-    # comp_picks = list(range(min(20, n_comp)))  # e.g., first 20 components
-    #
-    # # 2) create an inst whose info has EXG removed (used only for plotting)
-    # exclude_exg = [ch for ch in raw.ch_names if ch.startswith("EXG")]
-    # inst_plot = raw.copy()
-    # if exclude_exg:
-    #     inst_plot.drop_channels(exclude_exg)
-    #
-    # # 3) sanity checks
-    # print("n_comp", n_comp)
-    # print("comp_picks", comp_picks)
-    # print("EXG removed:", exclude_exg)
-    #
-    # print("ica.n_components_", getattr(ica, "n_components_", None))
-    # print("ica.ch_names", getattr(ica, "ch_names", None))
-    # print("inst_plot.info['chs'] count", len(inst_plot.info["chs"]))
-    # print(
-    #     "overlapping channels present:",
-    #     [ch for ch in inst_plot.ch_names if ch.startswith("EXG")],
-    # )
-    #
-    # # 4) plot using component indices and cleaned inst
-    # ica.plot_components(picks=comp_picks, inst=inst_plot)
-    # ica.plot_properties(inst_plot, picks=comp_picks)
-    #
-    # # picks_eeg = mne.pick_types(raw.info, eeg=True, eog=False, ecg=False, meg=False)
-    # # picks = picks_eeg[: min(len(picks_eeg), ica.n_components_)]
-    # # ica.plot_components(picks=picks, inst=raw)
-    # # ica.plot_properties(raw, picks=picks)
 
 
 def one_channel_erp_plot(raw, epochs, baseline):
@@ -256,7 +205,9 @@ def butterfly_plot(epochs):
     )
 
 
-def plot_channel(channel, data_random, data_regular, times, n_subjects, bids_root="../data/"):
+def plot_channel(
+    channel, data_random, data_regular, times, n_subjects, bids_root="../data/"
+):
     processed_dir = f"{bids_root}processed/"
 
     plt.figure(figsize=(10, 5))

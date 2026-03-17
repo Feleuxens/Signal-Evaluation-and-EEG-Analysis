@@ -1,17 +1,16 @@
 import asrpy
 from mne.io.edf.edf import RawEDF
 
+from utils.config import StepASR
 
-ASR_CUTOFF = 10  # ASR cutoff (lower = more aggressive, 5-20 typical)
 
-
-def run_asr(raw: RawEDF) -> tuple[RawEDF, asrpy.ASR | None]:
+def run_asr(raw: RawEDF, config: StepASR) -> tuple[RawEDF, asrpy.ASR | None]:
     """Apply ASR artifact correction to the raw data."""
 
     asr = None
 
     try:
-        asr = asrpy.ASR(sfreq=raw.info["sfreq"], cutoff=ASR_CUTOFF)
+        asr = asrpy.ASR(sfreq=raw.info["sfreq"], cutoff=config.cutoff)
         asr.fit(raw)
         raw = asr.transform(raw)
 

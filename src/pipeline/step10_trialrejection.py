@@ -4,14 +4,12 @@ Step 10: Trial (Epoch) Rejection
 Reject epochs based on peak-to-peak amplitude thresholds and flat signal detection.
 """
 
-import numpy as np
+from utils.config import StepTrialRejection
 
 
 def reject_trials(
     epochs,
-    eeg_threshold=150e-6,
-    eog_threshold=250e-6,
-    flat_threshold=1e-6,
+    config: StepTrialRejection,
     verbose=True,
 ):
     """
@@ -51,12 +49,11 @@ def reject_trials(
     ch_types = epochs.get_channel_types()
 
     if "eeg" in ch_types:
-        reject["eeg"] = eeg_threshold
-        flat["eeg"] = flat_threshold
+        reject["eeg"] = config.eeg_threshold
+        flat["eeg"] = config.flat_threshold
 
     if "eog" in ch_types:
-        reject["eog"] = eog_threshold
-
+        reject["eog"] = config.eog_threshold
 
     epochs_random = epochs["random"]
     epochs_regular = epochs["regular"]
@@ -86,10 +83,10 @@ def reject_trials(
     }
 
     if verbose:
-        print(f"  Rejection thresholds: EEG={eeg_threshold*1e6:.0f} µV", end="")
+        print(f"  Rejection thresholds: EEG={config.eeg_threshold*1e6:.0f} µV", end="")
         if "eog" in reject:
-            print(f", EOG={eog_threshold*1e6:.0f} µV", end="")
-        print(f", Flat<{flat_threshold*1e6:.1f} µV")
+            print(f", EOG={config.eog_threshold*1e6:.0f} µV", end="")
+        print(f", Flat<{config.flat_threshold*1e6:.1f} µV")
         print(f"  Epochs before rejection: {n_epochs_before}")
         print(f"  Epochs after rejection:  {n_epochs_after}")
         print(f"  Rejected: {n_rejected} ({rejection_rate:.1f}%)")

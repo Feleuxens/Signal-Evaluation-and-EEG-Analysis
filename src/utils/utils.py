@@ -1,6 +1,8 @@
 import json
 from glob import glob
 from math import inf
+from os import listdir
+from os.path import exists, join
 
 import mne
 import mne_bids
@@ -8,13 +10,34 @@ import numpy as np
 from mne import read_epochs
 
 
-def get_subjectlist(bids_root="../data/"):
+def get_subject_list(bids_root) -> list[str]:
     """Get list of subject IDs from BIDS dataset."""
 
     subject_list = mne_bids.get_entity_vals(bids_root, entity_key="subject")
     subject_list = [f"{int(s):03d}" for s in subject_list]  # zero-pad to 3 digits
 
     return subject_list
+
+
+def get_config_ids(config_root: str) -> list[int]:
+    """Get list of configs for pipeline execution."""
+    assert exists(config_root)
+    ids = []
+    for name in listdir(config_root):
+        stem = name.rsplit(".", 1)[0] if "." in name else name
+        num = stem.split("_", 1)[0]
+        ids.append(int(num))
+    if len(ids) != len(set(ids)):
+        raise ValueError("Duplicate config ids found")
+    return sorted(ids)
+
+
+def get_config_path(config_root: str, config_id: int) -> str:
+    for name in listdir(config_root):
+        stem = name.rsplit(".", 1)[0] if "." in name else name
+        if stem.split("_", 1)[0] == str(config_id):
+            return join(config_root, name)
+    raise FileNotFoundError(f"No config file for id {config_id}")
 
 
 def evoke_channels(epochs):
@@ -34,24 +57,24 @@ def evoke_channels(epochs):
 
 def average_channel(channel, bids_root="../data/"):
     """
-        Load all processed epoch files and compute the grand average for channel PO7,
-        separately for random and regular conditions.
+    Load all processed epoch files and compute the grand average for channel PO7,
+    separately for random and regular conditions.
 
-        Parameters
-        ----------
-        channel : str
-        bids_root : str
-            Path to the BIDS root directory.
+    Parameters
+    ----------
+    channel : str
+    bids_root : str
+        Path to the BIDS root directory.
 
-        Returns
-        -------
-        data_random : np.ndarray
-            Grand average waveform for random condition in µV (n_times,).
-        data_regular : np.ndarray
-            Grand average waveform for regular condition in µV (n_times,).
-        times : np.ndarray
-            Time vector in seconds.
-        """
+    Returns
+    -------
+    data_random : np.ndarray
+        Grand average waveform for random condition in µV (n_times,).
+    data_regular : np.ndarray
+        Grand average waveform for regular condition in µV (n_times,).
+    times : np.ndarray
+        Time vector in seconds.
+    """
     processed_dir = f"{bids_root}processed/"
     epoch_files = sorted(glob(f"{processed_dir}sub-*_epochs.fif"))
 
@@ -81,8 +104,7 @@ def average_channel(channel, bids_root="../data/"):
         # Create evoked responses for each condition
         evoked_random, evoked_regular = evoke_channels(epochs)
         evoked_diff = mne.combine_evoked(
-            [evoked_regular, evoked_random],
-            weights=[1, -1]
+            [evoked_regular, evoked_random], weights=[1, -1]
         )
 
         # Get channel channel index and extract data
@@ -117,7 +139,7 @@ def pairwise_average(arr1, arr2):
 
     result = []
     for i in range(0, len(arr1)):
-        result.append((arr1[i] + arr2[i])/2)
+        result.append((arr1[i] + arr2[i]) / 2)
     return result
 
 
@@ -151,25 +173,50 @@ def pipeline_statistics(bids_root="../data/"):
     participants = len(raw_data)
 
     for data in raw_data:
-        trial_rejection_regular_min = min(trial_rejection_regular_min, data["n_rejected_regular"])
-        trial_rejection_regular_max = max(trial_rejection_regular_max, data["n_rejected_regular"])
+        trial_rejection_regular_min = min(
+            trial_rejection_regular_min, data["n_rejected_regular"]
+        )
+        trial_rejection_regular_max = max(
+            trial_rejection_regular_max, data["n_rejected_regular"]
+        )
         trial_rejection_regular_sum += data["n_rejected_regular"]
-        trial_rejection_random_min = min(trial_rejection_random_min, data["n_rejected_random"])
-        trial_rejection_random_max = max(trial_rejection_random_max, data["n_rejected_random"])
+        trial_rejection_random_min = min(
+            trial_rejection_random_min, data["n_rejected_random"]
+        )
+        trial_rejection_random_max = max(
+            trial_rejection_random_max, data["n_rejected_random"]
+        )
         trial_rejection_random_sum += data["n_rejected_random"]
-        trial_rejection_overall_min = min(trial_rejection_overall_min, data["n_rejected"])
-        trial_rejection_overall_max = max(trial_rejection_overall_max, data["n_rejected"])
+        trial_rejection_overall_min = min(
+            trial_rejection_overall_min, data["n_rejected"]
+        )
+        trial_rejection_overall_max = max(
+            trial_rejection_overall_max, data["n_rejected"]
+        )
         trial_rejection_overall_sum += data["n_rejected"]
         number_of_trials += data["n_epochs_before"]
         number_of_trials_regular += data["n_epochs_regular_before"]
         number_of_trials_random += data["n_epochs_random_before"]
-        ica_removed_components_min = min(ica_removed_components_min, data["ica_components_excluded"])
-        ica_removed_components_max = max(ica_removed_components_max, data["ica_components_excluded"])
+        ica_removed_components_min = min(
+            ica_removed_components_min, data["ica_components_excluded"]
+        )
+        ica_removed_components_max = max(
+            ica_removed_components_max, data["ica_components_excluded"]
+        )
         ica_removed_components_sum += data["ica_components_excluded"]
 
-
-    print(f"Number of trials: {number_of_trials}  |  Random: {number_of_trials_random}, Regular: {number_of_trials_regular}")
-    print(f"Number of trials removed: {trial_rejection_overall_sum} -> {round((trial_rejection_overall_sum/number_of_trials)*100, 2)} %  | Min: {trial_rejection_overall_min}, Max: {trial_rejection_overall_max}")
-    print(f"Number of random trials removed: {trial_rejection_random_sum} -> {round((trial_rejection_random_sum/number_of_trials)*100, 2)} %  | Min: {trial_rejection_random_min}, Max: {trial_rejection_random_max}")
-    print(f"Number of regular trials removed: {trial_rejection_regular_sum} -> {round((trial_rejection_regular_sum/number_of_trials)*100, 2)} %  | Min: {trial_rejection_regular_min}, Max: {trial_rejection_regular_max}")
-    print(f"Ica components removed: Overall {ica_removed_components_sum}, average per participant {round(ica_removed_components_sum/participants, 2)}, min {ica_removed_components_min}, max {ica_removed_components_max}")
+    print(
+        f"Number of trials: {number_of_trials}  |  Random: {number_of_trials_random}, Regular: {number_of_trials_regular}"
+    )
+    print(
+        f"Number of trials removed: {trial_rejection_overall_sum} -> {round((trial_rejection_overall_sum/number_of_trials)*100, 2)} %  | Min: {trial_rejection_overall_min}, Max: {trial_rejection_overall_max}"
+    )
+    print(
+        f"Number of random trials removed: {trial_rejection_random_sum} -> {round((trial_rejection_random_sum/number_of_trials)*100, 2)} %  | Min: {trial_rejection_random_min}, Max: {trial_rejection_random_max}"
+    )
+    print(
+        f"Number of regular trials removed: {trial_rejection_regular_sum} -> {round((trial_rejection_regular_sum/number_of_trials)*100, 2)} %  | Min: {trial_rejection_regular_min}, Max: {trial_rejection_regular_max}"
+    )
+    print(
+        f"Ica components removed: Overall {ica_removed_components_sum}, average per participant {round(ica_removed_components_sum/participants, 2)}, min {ica_removed_components_min}, max {ica_removed_components_max}"
+    )

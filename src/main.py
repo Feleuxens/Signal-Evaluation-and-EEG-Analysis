@@ -1,93 +1,85 @@
 from time import time
 
-import json
-from mne.io import read_raw_fif
-from mne import read_epochs
-from os import mkdir
-from os.path import isdir, isfile
+from os import mkdir, getenv
+from os.path import isdir
 
-from plots import generate_plots, plot_channel, plot_topomap
-from utils import get_subjectlist, average_channel, pairwise_average, pipeline_statistics
-from analyze_subject import analyze_subject
+from pipeline.analyze_subject import run_pipeline, generate_plots_from_existing_data
+from utils.plots import generate_plots, plot_channel, plot_topomap
+from utils.utils import (
+    get_subject_list,
+    average_channel,
+    pairwise_average,
+    pipeline_statistics,
+    get_config_ids,
+    get_config_path,
+)
+from utils.config import load_config
 
 
-def main(bids_root="../data/"):
-    # path where to save the datasets.
-    if not isdir(bids_root + "processed"):
-        mkdir(bids_root + "processed")
+def main():
+    bids_root = getenv("BIDS_ROOT", "../data/")
+    bids_root = bids_root.rstrip("/")
+    config_root = getenv("CONFIG_ROOT", "../config/")
+    config_root = config_root.rstrip("/")
 
-    subjects = get_subjectlist(bids_root)
-    print(f"Subjects: {subjects}")
+    if not isdir(bids_root + "/processed"):
+        mkdir(bids_root + "/processed")
 
-    i = input("One subject (1) or all (2) or calculate mean of all PO7/PO8 (3) or Topomap (4) or Pipeline Statistics (5): ")
+    subjects = get_subject_list(bids_root)
+    print(f"Subjects: {subjects}\n")
+    configs = get_config_ids("config")
+    print(f"Configs: {configs}\n")
+
+    print("Which action do you want to perform?")
+    print("1 - Process data for specific config (all subjects)")
+    print("2 - Process data for all configs (all subjects)")
+    print("3 - Process data for specific config (specific subject)")
+    print("4 - Process data for all config (specific subject)")
+    print("5 - Generate plot for specific config (only one subject)")
+    print("6 - Generate plot for specific config (combined subjects)")
+    print("7 - Generate plot for all configs (combined subjects)")
+    i = input(": ")
     if i.lower() == "1":
-        subject = input("Subject ID: ")
-        process_one_subject(subject, bids_root)
-    elif i.lower() == "2":
-        time_start = time()
-        failed = []
+        c = int(input("Config ID: "))
+        config = load_config(get_config_path(config_root, c))
+        start_time = time()
         for subject in subjects:
-            try:
-                analyze_and_save(subject, bids_root)
-            except Exception as e:
-                failed.append({subject: e})
-        total_time = time() - time_start
+            run_pipeline(config, bids_root, c, subject)
+        total_time = time() - start_time
         print(f"\nElapsed time: {total_time} seconds\n")
-        print(f"{len(failed)} subjects failed")
-        print(failed)
+    elif i.lower() == "2":
+        start_time = time()
+        for c in configs:
+            config = load_config(get_config_path(config_root, c))
+            for subject in subjects:
+                run_pipeline(config, bids_root, c, subject)
+        total_time = time() - start_time
+        print(f"\nElapsed time: {total_time} seconds\n")
     elif i.lower() == "3":
-        data_random_po7, data_regular_po7, times_po7, n_subjects, evoked_diff_po7 = average_channel("PO7")
-        plot_channel("PO7", data_random_po7, data_regular_po7, times_po7, n_subjects)
-        data_random_po8, data_regular_po8, times_po8, n_subjects, evoked_diff_po8 = average_channel("PO8")
-        plot_channel("PO8", data_random_po8, data_regular_po8, times_po8, n_subjects)
-        data_random_both = pairwise_average(data_random_po7, data_random_po8)
-        data_regular_both = pairwise_average(data_regular_po7, data_regular_po8)
-        plot_channel("PO7+PO8", data_random_both, data_regular_both, times_po7, n_subjects)
+        c = int(input("Config ID: "))
+        config = load_config(get_config_path(config_root, c))
+        s = f"{int(input("Subject ID: ")):03d}"
+        start_time = time()
+        run_pipeline(config, bids_root, c, s)
+        total_time = time() - start_time
+        print(f"\nElapsed time: {total_time} seconds\n")
     elif i.lower() == "4":
-        data_random_po7, data_regular_po7, times_po7, n_subjects, evoked_diff_po7 = average_channel("PO7")
-        plot_topomap(evoked_diff_po7)
+        s = f"{int(input("Subject ID: ")):03d}"
+        start_time = time()
+        for c in configs:
+            config = load_config(get_config_path(config_root, c))
+            run_pipeline(config, bids_root, c, s)
+        total_time = time() - start_time
+        print(f"\nElapsed time: {total_time} seconds\n")
     elif i.lower() == "5":
-        pipeline_statistics()
+        pass  # TODO
+    elif i.lower() == "6":
+        pass  # TODO
+    elif i.lower() == "7":
+        pass  # TODO
 
-
-
-def process_one_subject(subject_id, bids_root):
-    epochs = None
-    raw = None
-    ica = None
-
-    if isfile(f"{bids_root}processed/sub-{subject_id}_raw.fif"):
-        print("Subject already processed")
-        i = input("Use existing data?: Y/N ")
-        if i.lower() == "y":
-            epochs = read_epochs(
-                f"{bids_root}processed/sub-{subject_id}_epochs.fif", preload=True
-            )
-            raw = read_raw_fif(
-                f"{bids_root}processed/sub-{subject_id}_raw.fif", preload=True
-            )
-        else:
-            print("Running pipeline for subject " + subject_id)
-            epochs, raw, ica = analyze_and_save(subject_id, bids_root)
     else:
-        print("Running pipeline for subject " + subject_id)
-        epochs, raw, ica = analyze_and_save(subject_id, bids_root)
-    generate_plots(epochs, raw, ica)
-
-
-def analyze_and_save(subject_id, bids_root):
-    print("Running new processing pipeline for subject " + subject_id)
-
-    epochs, raw, ica, pipeline_stats = analyze_subject(subject_id, bids_root)
-
-    epochs.save(f"{bids_root}processed/sub-{subject_id}_epochs.fif", overwrite=True)
-    raw.save(f"{bids_root}processed/sub-{subject_id}_raw.fif", overwrite=True)
-    if ica is not None:
-        ica.save(f"{bids_root}processed/sub-{subject_id}_ica.fif", overwrite=True)
-
-    with open(f"{bids_root}processed/sub-{subject_id}_meta.txt", "w") as f:
-        f.write(json.dumps(pipeline_stats))
-    return epochs, raw, ica
+        print("Invalid input")
 
 
 if __name__ == "__main__":

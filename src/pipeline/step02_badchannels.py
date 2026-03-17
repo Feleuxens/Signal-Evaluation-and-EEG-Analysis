@@ -1,12 +1,10 @@
 import numpy as np
 from mne.io.edf.edf import RawEDF
 
-
-BAD_CHANNEL_Z_THRESH = 3.0  # z-score threshold for bad channel detection
-STATUS_PREFIX = "Status"  # Prefix for status channels to exclude from EEG analysis
+from utils.config import StepBadChannels
 
 
-def detect_bad_channels(raw: RawEDF) -> RawEDF:
+def detect_bad_channels(raw: RawEDF, config: StepBadChannels) -> RawEDF:
     """Automatic detection and marking of bad channels"""
 
     channel_names = raw.ch_names
@@ -15,7 +13,8 @@ def detect_bad_channels(raw: RawEDF) -> RawEDF:
     eeg_picks = [
         i
         for i, ch in enumerate(channel_names)
-        if  not ch.startswith(STATUS_PREFIX)
+        if not ch.upper().startswith(config.exg_prefix)
+        and not ch.startswith(config.status_prefix)
         and raw.get_channel_types()[i] == "eeg"
     ]
 
@@ -27,8 +26,12 @@ def detect_bad_channels(raw: RawEDF) -> RawEDF:
 
     data = raw.get_data(picks=eeg_picks)
 
-    bad_channels_var = _zscore_bad_channel_detection(data, channel_names)
-    bad_channels_corr = _correlation_bad_channel_detection(data, channel_names)
+    bad_channels_var = _zscore_bad_channel_detection(
+        data, channel_names, config.z_thresh
+    )
+    bad_channels_corr = _correlation_bad_channel_detection(
+        data, channel_names, config.z_thresh
+    )
 
     bad_channels = sorted(set(bad_channels_var + bad_channels_corr))
 
@@ -40,9 +43,7 @@ def detect_bad_channels(raw: RawEDF) -> RawEDF:
     return raw
 
 
-def _zscore_bad_channel_detection(
-    data, channel_names, bad_channel_z_thresh=BAD_CHANNEL_Z_THRESH
-):
+def _zscore_bad_channel_detection(data, channel_names, bad_channel_z_thresh):
     """1. Variance z-score across channels"""
     variances = np.var(data, axis=1)
     z_var = (variances - variances.mean()) / variances.std()
@@ -55,9 +56,7 @@ def _zscore_bad_channel_detection(
     return bad_channels_var
 
 
-def _correlation_bad_channel_detection(
-    data, channel_names, bad_channel_z_thresh=BAD_CHANNEL_Z_THRESH
-):
+def _correlation_bad_channel_detection(data, channel_names, bad_channel_z_thresh):
     """2. Low correlation channels (flat or noisy channels)"""
     corr_matrix = np.corrcoef(data)
     mean_corr = np.median(corr_matrix, axis=0)

@@ -4,23 +4,27 @@ from mne.io.edf.edf import RawEDF
 import pandas as pd
 import numpy as np
 
-
-T_MIN, T_MAX = -0.5, 1.0  # epoch time range in seconds
+from utils.config import StepEpoching
 
 
 def epoch_data(
-    raw: RawEDF, bids_path: BIDSPath, baseline: tuple[float, float]
+    raw: RawEDF, bids_path: BIDSPath, config: StepEpoching
 ) -> tuple[Epochs, np.ndarray, dict]:
     """Epoch the data based on annotations.
     Also applies baseline correction."""
 
     raw = _load_and_attach_annotations(bids_path, raw)
-
     events, event_dict = events_from_annotations(raw)
 
-    epochs = _generate_epochs(raw, events, event_dict, baseline=baseline)
-
-    epochs.apply_baseline(baseline)
+    epochs = _generate_epochs(
+        raw,
+        events,
+        event_dict,
+        config.baseline,
+        config.epochrange_tmin,
+        config.epochrange_tmax,
+    )
+    epochs.apply_baseline(config.baseline)
 
     return epochs, events, event_dict
 
@@ -54,7 +58,7 @@ def _load_events_from_bids(bids_path):
     return Annotations(onset=onsets, duration=durations, description=descriptions)
 
 
-def _generate_epochs(raw, events, event_dict, baseline, tmin=T_MIN, tmax=T_MAX):
+def _generate_epochs(raw, events, event_dict, baseline, tmin, tmax):
     """Generate epochs from raw data and events."""
 
     epochs = Epochs(

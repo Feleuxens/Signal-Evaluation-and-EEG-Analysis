@@ -1,26 +1,13 @@
-from time import time
-from os import mkdir
-from os.path import isdir
 from mne_bids import BIDSPath
-from utils import get_subjectlist
-import os
 import numpy as np
 import matplotlib.pyplot as plt
 import mne
-import re
 from scipy import signal
 
-from step01_loading import load_data
-from step02_badchannels import detect_bad_channels
-from step03_filtering import filter_data
-from step04_downsampling import downsample_data
-from step05_referencing import rereference_data
-from step06_asr import run_asr
-from step07_ica import run_ica
-from step08_interpolation import interpolate_bad_channels
-from step09_epoching import epoch_data
+from src.pipeline.step01_loading import load_data
 
 BASELINE = (-0.25, 0.0)  # baseline correction period
+
 
 def main(bids_root="../data/"):
     # Plot EOG channels
@@ -45,10 +32,15 @@ def main(bids_root="../data/"):
     raw_eog = raw.copy().pick_channels(eog_chs)
 
     # Simple plot: scrollable multi-channel trace
-    raw_eog.plot(n_channels=8, scalings='auto', duration=10, start=0.0,
-                title='EOG channels (EXG -> EOG)', show=True, block=True)
-
-
+    raw_eog.plot(
+        n_channels=8,
+        scalings="auto",
+        duration=10,
+        start=0.0,
+        title="EOG channels (EXG -> EOG)",
+        show=True,
+        block=True,
+    )
 
 
 def main2(bids_root="../data/"):
@@ -66,19 +58,19 @@ def main2(bids_root="../data/"):
     raw = load_data(bids_path)
     # === Parameters ===
     eog_ch_name = "EXG1"
-    l_freq, h_freq = 1.0, 15.0        # bandpass for blink detection
-    threshold_uv = 100.0              # µV threshold for peak detection
-    min_distance_s = 0.25             # minimum distance between peaks (s)
-    plot_seconds = 100                 # seconds of data to plot (None = whole recording)
-    plot_start_s = 300.0               # start time in seconds for the plotted window
-    sfreq = raw.info['sfreq']         # assumes `raw` is already loaded in workspace
+    l_freq, h_freq = 1.0, 15.0  # bandpass for blink detection
+    threshold_uv = 100.0  # µV threshold for peak detection
+    min_distance_s = 0.25  # minimum distance between peaks (s)
+    plot_seconds = 100  # seconds of data to plot (None = whole recording)
+    plot_start_s = 300.0  # start time in seconds for the plotted window
+    sfreq = raw.info["sfreq"]  # assumes `raw` is already loaded in workspace
 
     # === Prepare EOG data ===
     if eog_ch_name not in raw.ch_names:
         raise ValueError(f"Channel {eog_ch_name} not found in raw.ch_names")
 
     raw_eog = raw.copy().pick_channels([eog_ch_name])
-    eog_data = raw_eog.get_data()[0]             # shape (n_samples,)
+    eog_data = raw_eog.get_data()[0]  # shape (n_samples,)
     n_samples = eog_data.shape[0]
     total_duration_s = n_samples / sfreq
 
@@ -86,11 +78,13 @@ def main2(bids_root="../data/"):
     if plot_start_s < 0:
         plot_start_s = 0.0
     if plot_start_s >= total_duration_s:
-        raise ValueError(f"plot_start_s ({plot_start_s}s) is beyond recording duration ({total_duration_s:.1f}s)")
+        raise ValueError(
+            f"plot_start_s ({plot_start_s}s) is beyond recording duration ({total_duration_s:.1f}s)"
+        )
 
     # === Filter EOG to emphasize blinks ===
     eog_filt = mne.filter.filter_data(
-        eog_data, sfreq=sfreq, l_freq=l_freq, h_freq=h_freq, method='iir'
+        eog_data, sfreq=sfreq, l_freq=l_freq, h_freq=h_freq, method="iir"
     )
 
     # === Convert threshold to Volts (raw usually in Volts) ===
@@ -99,7 +93,9 @@ def main2(bids_root="../data/"):
     # === Find blink peaks on absolute filtered signal ===
     abs_eog = np.abs(eog_filt)
     min_distance_samples = int(min_distance_s * sfreq)
-    peaks, props = signal.find_peaks(abs_eog, height=threshold_v, distance=min_distance_samples)
+    peaks, props = signal.find_peaks(
+        abs_eog, height=threshold_v, distance=min_distance_samples
+    )
 
     # === Create boolean mask per sample indicating within-blink window (small window around peak) ===
     blink_half_width_s = 0.1
@@ -127,13 +123,15 @@ def main2(bids_root="../data/"):
 
     # === Plot: EOG with blink markers ===
     plt.figure(figsize=(12, 4))
-    plt.plot(times_plot, eog_plot * 1e6, color='C0', label='EXG1 (filtered)')  # convert to µV for display
+    plt.plot(
+        times_plot, eog_plot * 1e6, color="C0", label="EXG1 (filtered)"
+    )  # convert to µV for display
 
     # Mark detected peak positions within the plotted window
     peak_mask_in_plot = (peaks >= start_sample) & (peaks < end_sample)
     peak_times_plot = peaks[peak_mask_in_plot] / sfreq
     peak_vals_plot = eog_filt[peaks[peak_mask_in_plot]] * 1e6
-    plt.plot(peak_times_plot, peak_vals_plot, 'rx', label='Detected blink peaks')
+    plt.plot(peak_times_plot, peak_vals_plot, "rx", label="Detected blink peaks")
 
     # Shade blink regions (contiguous True segments in mask_plot)
     in_blink = False
@@ -144,22 +142,27 @@ def main2(bids_root="../data/"):
             start_t = times_plot[i]
         elif not val and in_blink:
             end_t = times_plot[i]
-            plt.axvspan(start_t, end_t, color='red', alpha=0.15)
+            plt.axvspan(start_t, end_t, color="red", alpha=0.15)
             in_blink = False
     if in_blink:
-        plt.axvspan(start_t, times_plot[-1], color='red', alpha=0.15)
+        plt.axvspan(start_t, times_plot[-1], color="red", alpha=0.15)
 
-    plt.xlabel('Time (s)')
-    plt.ylabel('EXG1 (µV)')
-    plt.title(f'EOG blink detection on subject {subject_id} and channel {eog_ch_name} — window {times_plot[0]:.1f}s to {times_plot[-1]:.1f}s')
-    plt.legend(loc='upper right')
+    plt.xlabel("Time (s)")
+    plt.ylabel("EXG1 (µV)")
+    plt.title(
+        f"EOG blink detection on subject {subject_id} and channel {eog_ch_name} — window {times_plot[0]:.1f}s to {times_plot[-1]:.1f}s"
+    )
+    plt.legend(loc="upper right")
     plt.tight_layout()
     plt.show()
 
     # === Optional: print summary for the plotted window ===
     n_peaks_plot = peak_mask_in_plot.sum()
     print(f"Plotted window: {times_plot[0]:.2f}s–{times_plot[-1]:.2f}s")
-    print(f"Detected {n_peaks_plot} blinks (peaks above {threshold_uv} µV) in plotted window.")
+    print(
+        f"Detected {n_peaks_plot} blinks (peaks above {threshold_uv} µV) in plotted window."
+    )
+
 
 # def main(bids_root="../data/"):
 #     subject_id = "005"
@@ -173,7 +176,7 @@ def main2(bids_root="../data/"):
 
 #     # 01) Load data
 #     raw = load_data(bids_path)
-        
+
 #     # Parameters
 #     # raw must be loaded
 #     rename_exg_to_eog = True    # set False to keep original names
@@ -407,7 +410,6 @@ def main2(bids_root="../data/"):
 #     # === Print subject counts per group ===
 #     for g in groups:
 #         print(f"{g}: subjects contributing = {len(grand_means[g])}")
-
 
 
 if __name__ == "__main__":

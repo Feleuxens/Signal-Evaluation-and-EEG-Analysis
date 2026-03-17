@@ -1,14 +1,12 @@
 from mne.preprocessing import ICA, create_eog_epochs, create_ecg_epochs
-from mne.channels import make_standard_montage
-from mne import pick_types, create_info
-import mne
+from mne import pick_types
 import numpy as np
 from mne.io.edf.edf import RawEDF
 
-ICA_N_COMPONENTS = 0.99  # Variance explained or number of components
+from utils.config import StepICA
 
 
-def run_ica(raw: RawEDF, n_components=ICA_N_COMPONENTS) -> tuple[RawEDF, ICA | None, int]:
+def run_ica(raw: RawEDF, config: StepICA) -> tuple[RawEDF, ICA | None, int]:
     # require at least two EEG channels
     picks_eeg = pick_types(raw.info, eeg=True, meg=False, exclude="bads")
     if len(picks_eeg) < 2:
@@ -16,7 +14,7 @@ def run_ica(raw: RawEDF, n_components=ICA_N_COMPONENTS) -> tuple[RawEDF, ICA | N
         return raw, None, 0
 
     ica = ICA(
-        n_components=n_components,
+        n_components=config.n_components,
         method="infomax",
         random_state=42,
         max_iter="auto",
