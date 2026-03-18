@@ -16,8 +16,8 @@ def filter_data(raw: RawEDF, config: StepFiltering) -> RawEDF:
         )
     if config.pass_filter_enabled:
         raw.filter(
-            config.low_pass,
             config.high_pass,
+            config.low_pass,
             picks=config.notch_filter_pick,
             method=config.pass_filter_method,
         )

@@ -18,7 +18,7 @@ class StepFiltering:
     low_pass: float = 40.0
     high_pass: float = 0.1
     pass_filter_pick: str = "eeg"
-    pass_filter_method: str = "fft"
+    pass_filter_method: str = "fir"
     notch_filter_enabled: bool = True
     notch_frequencies: list[float] = field(default_factory=lambda: [50, 100, 150, 200])
     notch_filter_pick: str = "eeg"
@@ -42,7 +42,7 @@ class StepRereferencing:
 @dataclass
 class StepASR:
     enabled: bool = True
-    cutoff: float = 10.0
+    cutoff: int = 10
 
 
 @dataclass
