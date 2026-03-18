@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from tomllib import load
+from typing import Type, Dict
 
 
 @dataclass
@@ -90,7 +91,8 @@ def load_config(path: str | Path) -> PipelineConfig:
     with open(path, "rb") as f:
         raw = load(f)
 
-    step_classes = {f.name: f.type for f in fields(PipelineConfig)}
+    step_classes: Dict[str, Type] = {f.name: f.type # type: ignore[assignment]
+                                      for f in fields(PipelineConfig)}
 
     built_steps = {}
     for section, values in raw.items():
