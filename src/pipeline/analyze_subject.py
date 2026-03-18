@@ -116,7 +116,7 @@ def save_data(output_folder, subject_id, epochs, raw, ica, pipeline_stats):
     epochs.save(f"{output_folder}/sub-{subject_id}_epochs.fif", overwrite=True)
     raw.save(f"{output_folder}/sub-{subject_id}_raw.fif", overwrite=True)
     if ica is not None:
-        ica.save(f"{output_folder}/sub-{subject_id}_ica.fif")
+        ica.save(f"{output_folder}/sub-{subject_id}_ica.fif", overwrite=True)
 
     if pipeline_stats is not None:
         with open(f"{output_folder}/sub-{subject_id}_meta.txt", "w") as f:
