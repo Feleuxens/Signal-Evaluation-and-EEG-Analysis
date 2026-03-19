@@ -1,13 +1,15 @@
 from mne_bids import BIDSPath, read_raw_bids
+from mne.io import Raw
 from mne.io.edf.edf import RawEDF
 
 
 def load_data(bids_path: BIDSPath) -> RawEDF:
     """Load raw EEG data from BIDS path."""
 
-    raw: RawEDF = read_raw_bids(bids_path)
+    raw: Raw = read_raw_bids(bids_path)
+    assert isinstance(raw, RawEDF)
+    
     raw.load_data()
-
     # rename EXG5 and EXG6 to EOG5 and EOG6
     for ch in ["EXG5", "EXG6"]:
         raw.set_channel_types({ch: "eog"})
