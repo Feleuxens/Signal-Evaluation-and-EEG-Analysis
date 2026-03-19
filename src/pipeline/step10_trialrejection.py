@@ -4,6 +4,8 @@ Step 10: Trial (Epoch) Rejection
 Reject epochs based on peak-to-peak amplitude thresholds and flat signal detection.
 """
 
+from mne import Epochs
+
 from utils.config import StepTrialRejection
 
 
@@ -11,7 +13,7 @@ def reject_trials(
     epochs,
     config: StepTrialRejection,
     verbose=True,
-):
+) -> tuple[Epochs, dict]:
     """
     Reject epochs containing artifacts based on amplitude criteria.
 
@@ -68,7 +70,7 @@ def reject_trials(
     n_rejected = n_epochs_before - n_epochs_after
     rejection_rate = (n_rejected / n_epochs_before) * 100 if n_epochs_before > 0 else 0
 
-    reject_log = {
+    reject_log: dict = {
         "n_epochs_before": n_epochs_before,
         "n_epochs_after": n_epochs_after,
         "n_epochs_regular_before": len(epochs_regular),
