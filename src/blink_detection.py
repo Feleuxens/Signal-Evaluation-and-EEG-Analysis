@@ -1,6 +1,10 @@
-from os import getenv
+from time import time
+from os import getenv, mkdir, remove
+from os.path import isdir, isfile
 from mne_bids import BIDSPath
 import mne
+from mne.io.edf.edf import RawEDF
+from mne import Epochs, read_epochs
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import signal
@@ -15,9 +19,10 @@ from pipeline.step06_asr import run_asr
 from pipeline.step07_ica import run_ica
 from pipeline.step08_interpolation import interpolate_bad_channels
 from pipeline.step09_epoching import epoch_data
+from pipeline.step10_trialrejection import reject_trials
 
 from utils.config import load_config, PipelineConfig
-from utils.utils import get_config_path
+from utils.utils import get_config_path, get_subject_list, average_channel, pairwise_average
 
 
 def main():
@@ -30,14 +35,134 @@ def main():
     config_path = get_config_path(config_root, 1) 
     config = load_config(config_path)
 
-    eeg_plus_eog(bids_root, "010", config)
+    output_folder = bids_root + "/processed_blinkdetection"
+
+    print("Which action do you want to perform?")
+    print("1 - Plot blink detection for one subjects")
+    print("2 - Process data for for blink comparison (all subjects)")
+    print("3 - Plot data for blink comparison (all subjects)")
+
+    i = input(": ")
+    if i.lower() == "1":
+        s = f"{int(input("Subject ID: ")):03d}"
+        eeg_plus_eog_one_subject(bids_root, s, config)
+
+    elif i.lower() == "2":
+        start_time = time()
+        precompute_all_epochs(bids_root, config, output_folder)
+        total_time = time() - start_time
+        print(f"\nElapsed time: {total_time} seconds\n")
+
+    elif i.lower() == "3":
+        start_time = time()
+        all_subjects_plotting(bids_root, config, output_folder)
+        total_time = time() - start_time
+        print(f"\nElapsed time: {total_time} seconds\n")
 
 
-def eeg_plus_eog(bids_root: str, subject_id: str, config: PipelineConfig):
+
+def all_subjects_plotting(bids_root: str, config: PipelineConfig, output_folder: str):
+    epochs_with_blinks, epochs_without_blinks = load_all_epochs(bids_root, output_folder)
+    plot_average_data(bids_root, epochs_with_blinks, epochs_without_blinks)
+
+
+def save_blink_epochs(
+    output_folder: str,
+    subject_id: str,
+    epochs_with_blink: Epochs,
+    epochs_without_blink: Epochs,
+):
+    epochs_with_blink.save(f"{output_folder}/sub-{subject_id}_with_blinks_epo.fif", overwrite=True)
+    epochs_without_blink.save(f"{output_folder}/sub-{subject_id}_without_blinks_epo.fif", overwrite=True)
+
+
+def read_blink_epochs(
+    data_folder: str, subject_id: str
+) -> tuple[Epochs, Epochs]:
+    if not isdir(data_folder):
+        raise FileNotFoundError(f"{data_folder} is not a directory")
+
+    epochs_with_blinks = None
+    epochs_without_blinks = None
+
+    file = f"{data_folder}/sub-{subject_id}_with_blinks_epo.fif"
+    if isfile(file):
+        epochs_with_blinks = read_epochs(file, preload=True)
+    else:
+        raise FileNotFoundError(f"{data_folder} doesn't have file: {file}")
+    
+    file = f"{data_folder}/sub-{subject_id}_without_blinks_epo.fif"
+    if isfile(file):
+        epochs_without_blinks = read_epochs(file, preload=True)
+    else:
+        raise FileNotFoundError(f"{data_folder} doesn't have file: {file}")
+    
+    return epochs_with_blinks, epochs_without_blinks # pyright: ignore[reportReturnType]
+
+
+
+def precompute_all_epochs(bids_root: str, config: PipelineConfig, output_folder: str):
+
+    subject_ids = get_subject_list(bids_root)
+
+    for i, subject_id in enumerate(subject_ids):
+
+        epochs_after, _, raw_after = process_subject_with_blinkdetection(bids_root, subject_id, config)
+
+        # eeg_chs = ['PO7','PO8']
+        eog_chs = ['EOG5','EOG6']
+
+        blink_intervals, _ = detect_blinks_on_raw(
+            raw_after,
+            eog_chs=eog_chs,
+            l_freq=1.0, h_freq=15.0,
+            envelope_smooth_ms=20.0,
+            mad_mult=6.0
+        )
+
+        has_blink = epochs_have_blinks(epochs_after, blink_intervals)
+
+        epochs_with_blinks, epochs_without_blinks = filter_blinks(epochs_after, has_blink)
+
+        save_blink_epochs(output_folder, subject_id, epochs_with_blinks, epochs_without_blinks)
+
+
+def load_all_epochs(bids_root: str, output_folder: str) -> tuple[
+    dict[int, Epochs],
+    dict[int, Epochs]
+]:
+    with_blinks = {}
+    without_blinks = {}
+
+    subject_ids = get_subject_list(bids_root)
+
+    for i, subject_id in enumerate(subject_ids):
+
+        epochs_with_blinks, epochs_without_blinks = read_blink_epochs(output_folder, subject_id)
+
+        with_blinks[i] = epochs_with_blinks
+        without_blinks[i] = epochs_without_blinks
+    
+    return (with_blinks, without_blinks)
+
+
+def filter_blinks(epochs: Epochs, has_blink: np.typing.NDArray[np.bool]) -> tuple[Epochs, Epochs]:
+    if has_blink.ndim != 1 or has_blink.shape[0] != len(epochs):
+        raise ValueError("filter must be a 1D boolean array with length == len(epochs)")
+
+    print(f"hasblinks: {len(has_blink)}, epochs: {len(epochs)}")
+    epochs_with_blink = epochs.copy().drop(~has_blink, reason="blink")
+    epochs_without_blink = epochs.drop(has_blink, reason="no blink")
+
+    return (epochs_with_blink, epochs_without_blink)
+
+
+def process_subject_with_blinkdetection(bids_root: str, subject_id: str, config: PipelineConfig) -> tuple[Epochs, Epochs, RawEDF]:
     """
-    Plot EOG channels as well as before and after ASR eeg data for each epoch.
+    computes all epochs once with ASR and once without.
+    First Epochs are with ASR,
+    Second Epochs are without ASR
     """
-
     bids_path = BIDSPath(
         subject=subject_id,
         root=bids_root,
@@ -48,7 +173,6 @@ def eeg_plus_eog(bids_root: str, subject_id: str, config: PipelineConfig):
 
     print("\nStep 01: Loading data")
     raw = load_data(bids_path)
-
 
     if config.bad_channels.enabled:
         print("\nStep 02: Detecting bad channels")
@@ -87,19 +211,104 @@ def eeg_plus_eog(bids_root: str, subject_id: str, config: PipelineConfig):
     epochs_after, _, _ = epoch_data(raw_after, bids_path, config.epoching)
     epochs_before, _, _ = epoch_data(raw_before, bids_path, config.epoching)
 
-    # TODO: Can trialrejection be done here?
-    # if config.trial_rejection.enabled:
-    #     print(f"\nStep 10: Trial rejection")
-    #     epochs, reject_log = reject_trials(epochs, config.trial_rejection)
+    return (epochs_after, epochs_before, raw_after)
 
-    #     pipeline_stats = reject_log
-    #     pipeline_stats["ica_components_excluded"] = number_excluded_components
+def plot_average_data(bids_root: str, epochs_with_blinks: dict[int, Epochs], epochs_without_blinks: dict[int, Epochs]):
+
+    output_folder = bids_root + "/processed_blinkdetection"
+
+    data_random_po7_with_blink, data_regular_po7_with_blink, times_po7_with_blink, n_subjects_with_blink, _ =  average_channel("PO7", epochs_with_blinks)
+    data_random_po8_with_blink, data_regular_po8_with_blink, _, _, _ =  average_channel("PO8", epochs_with_blinks)
+
+    data_random_po7_without_blink, data_regular_po7_without_blink, times_po7_without_blink, n_subjects_without_blink, _ =  average_channel("PO7", epochs_without_blinks)
+    data_random_po8_without_blink, data_regular_po8_without_blink, _, _, _ =  average_channel("PO8", epochs_without_blinks)
+
+    data_random_with_blink = pairwise_average(data_random_po7_with_blink, data_random_po8_with_blink)
+    data_random_without_blink = pairwise_average(data_random_po7_without_blink, data_random_po8_without_blink)
+    data_regular_with_blink = pairwise_average(data_regular_po7_with_blink, data_regular_po8_with_blink)
+    data_regular_without_blink = pairwise_average(data_regular_po7_without_blink, data_regular_po8_without_blink)
+
+    n_epochs_with_blinks = 0
+    for epochs in epochs_with_blinks.values():
+        n_epochs_with_blinks += len(epochs)
+
+    n_epochs_without_blinks = 0
+    for epochs in epochs_without_blinks.values():
+        n_epochs_without_blinks += len(epochs)
+
+
+    if not isdir(output_folder):
+        mkdir(output_folder)
+
+    file = f"{output_folder}/fig-average_po7po8_with_blinks.png"
+    # if isfile(file):
+    #     remove(file)
+        
+    plot_channel(
+        file,
+        "with blinks",
+        "PO7+PO8",
+        data_random_with_blink,
+        data_regular_with_blink,
+        times_po7_with_blink,
+        n_subjects_with_blink,
+        n_epochs_with_blinks
+    )
+
+    file = f"{output_folder}/fig-average_po7po8_without_blinks.png"
+    # if isfile(file):
+    #     remove(file)
+
+    plot_channel(
+        file,
+        "without blinks",
+        "PO7+PO8",
+        data_random_without_blink,
+        data_regular_without_blink,
+        times_po7_without_blink,
+        n_subjects_without_blink,
+        n_epochs_without_blinks
+    )
+
+
+def plot_channel(
+    output_file,
+    title,
+    channel,
+    data_random,
+    data_regular,
+    times,
+    n_subjects,
+    n_epochs
+):
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(times * 1000, data_random, "r-", linewidth=2, label="Random")
+    plt.plot(times * 1000, data_regular, "b-", linewidth=2, label="Regular")
+    plt.axhline(0, color="k", linestyle="--", linewidth=0.5)
+    plt.axvline(0, color="k", linestyle="--", linewidth=0.5)
+    plt.yticks([-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7])
+    plt.xlabel("Time (ms)")
+    plt.ylabel("Amplitude (µV)")
+    plt.title(f"Grand Average ERP for condition: {title} at {channel} (n={n_subjects} subjects, k={n_epochs} epochs)")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(output_file, bbox_inches="tight")
+
+    return data_random, data_regular, times
+
+
+def eeg_plus_eog_one_subject(bids_root: str, subject_id: str, config: PipelineConfig):
+    """
+    Plot EOG channels as well as before and after ASR eeg data for each epoch for one subject.
+    """
+    epochs_after, epochs_before, raw_after = process_subject_with_blinkdetection(bids_root, subject_id, config)
 
     eeg_chs = ['PO7','PO8']
     eog_chs = ['EOG5','EOG6']
 
     blink_intervals, durations = detect_blinks_on_raw(
-        raw_before,
+        raw_after,
         eog_chs=eog_chs,
         l_freq=1.0, h_freq=15.0,
         envelope_smooth_ms=20.0,
@@ -110,6 +319,7 @@ def eeg_plus_eog(bids_root: str, subject_id: str, config: PipelineConfig):
     print("mean duration of blinks:", np.mean(durations))
 
     fig, ax = plot_epochs_before_after(
+        subject_id,
         epochs_after,
         epochs_before,
         blink_intervals,
@@ -227,6 +437,7 @@ def epochs_have_blinks(epochs: mne.Epochs, blink_intervals) -> np.typing.NDArray
     return has_blink
 
 def plot_epochs_before_after(
+    subject_id: str,
     epochs_after: mne.Epochs,
     epochs_before: mne.Epochs,
     blink_intervals,
@@ -273,7 +484,7 @@ def plot_epochs_before_after(
         ax.set_yticklabels(plot_chs)
         ax.set_xlim(times[0], times[-1])
         ax.set_xlabel("Time (s)")
-        ax.set_title(f"Epoch {idx+1} / {n_epochs}, with {"blink" if has_blink[idx] else "no blink"}")
+        ax.set_title(f"Epoch {idx+1} / {n_epochs}, with {"blink" if has_blink[idx] else "no blink"} for subject {subject_id}")
         ax.grid(True, linewidth=0.3, alpha=0.6)
         ax.legend(handles=legend_handles, loc='upper right')
 
