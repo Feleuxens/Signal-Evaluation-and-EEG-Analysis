@@ -90,7 +90,7 @@ def average_channel(channel, epochs_dict: dict[int, Epochs]):
 
         times = evoked_random.times  # Same for all subjects
 
-    if not evokeds_random or not evokeds_regular or not evoked_diff or not times:
+    if not evokeds_random or not evokeds_regular or not evoked_diff or times is None or len(times) == 0 :
         raise RuntimeError(f"No valid subjects with {channel} channel found.")
 
     # Stack and compute mean across subjects
