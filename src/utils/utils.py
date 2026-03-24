@@ -117,8 +117,8 @@ def pairwise_average(arr1, arr2):
     return result
 
 
-def pipeline_statistics(bids_root="../data/"):
-    processed_dir = f"{bids_root}processed/"
+def pipeline_statistics(bids_root: str, config: int):
+    processed_dir = f"{bids_root.rstrip('/')}/processed/{config}/"
     meta_files = sorted(glob(f"{processed_dir}sub-*_meta.txt"))
 
     if not meta_files:

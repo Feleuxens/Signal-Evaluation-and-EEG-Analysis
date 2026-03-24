@@ -14,7 +14,7 @@ from pipeline.analyze_subject import (
 from utils.utils import (
     get_subject_list,
     get_config_ids,
-    get_config_path,
+    get_config_path, pipeline_statistics,
 )
 from utils.config import load_config
 
@@ -41,6 +41,7 @@ def main():
     print("5 - Generate plot for specific config (only one subject)")
     print("6 - Generate plot for specific config (combined subjects)")
     print("7 - Generate plot for all configs (combined subjects)")
+    print("8 - Print pipeline statistics for specific config")
     i = input(": ")
     if i.lower() == "1":
         c = int(input("Config ID: "))
@@ -83,6 +84,9 @@ def main():
                 continue
             config = load_config(get_config_path(config_root, c))
             plot_average_data(config, bids_root + "/processed", c)
+    elif i.lower() == "8":
+        c = int(input("Config ID: "))
+        pipeline_statistics(bids_root, c)
     else:
         print("Invalid input")
 
