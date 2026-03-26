@@ -42,7 +42,7 @@ def main():
 
     subjects = get_subject_list(bids_root)
     print(f"Subjects: {subjects}\n")
-    configs = get_config_ids("config")
+    configs = get_config_ids(config_root)
     print(f"Configs: {configs}\n")
 
     print("Which action do you want to perform?")
